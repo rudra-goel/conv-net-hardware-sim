@@ -1,3 +1,7 @@
+
+#ifndef FCU_H
+#define FCU_H
+
 /**
  * Header file for the FCU Pipeline
  */
@@ -18,7 +22,7 @@ typedef struct {
     int x0;
     int x1;
     int x2;
-
+    
     int h0;
     int h1;
     int h2;
@@ -26,19 +30,19 @@ typedef struct {
     int h01;
     int h12;
     int h012;
-
+    
 } conv_layer_ip;
 
 typedef struct {
     int x2;
-
+    
     int x0h0;
     int x1h1;
     int x2h2;
     
     int x01;
     int x12;
-
+    
     int h01;
     int h12;
     int h012;
@@ -52,9 +56,9 @@ typedef struct {
     int x012;
     int x01h01;
     int x12h12;
-
+    
     int h012;
-
+    
 } stage_2_3_buffer;
 
 typedef struct {
@@ -100,7 +104,7 @@ typedef struct {
     int x12h12_x1h1;
     int x0h0_x2h2;
     int x012h012_x01h01_x12h12_plus_2x1h1;
-
+    
     int x2h2_x0h0_plus_x01h01_x1h1;
 } stage_7_8_buffer;
 
@@ -109,6 +113,20 @@ typedef struct {
     int y1;
     int y2;
 } conv_layer_op;
+
+typedef struct {
+    
+    conv_layer_ip* ip;
+    stage_1_2_buffer* s12;
+    stage_2_3_buffer* s23;
+    stage_3_4_buffer* s34;
+    stage_4_5_buffer* s45;
+    stage_5_6_buffer* s56;
+    stage_6_7_buffer* s67;
+    stage_7_8_buffer* s78;
+    conv_layer_op* op;
+    
+} pipeline_buffers;
 
 stage_1_2_buffer* conv_layer_stage_one(conv_layer_ip* inputs);
 stage_2_3_buffer* conv_layer_stage_two(stage_1_2_buffer* inputs);
@@ -122,3 +140,5 @@ conv_layer_op* conv_layer_stage_eight(stage_7_8_buffer* inputs);
 int multiplier (int a, int b);
 int adder(int a, int b);
 
+
+#endif

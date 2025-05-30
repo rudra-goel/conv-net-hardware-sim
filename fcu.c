@@ -1,4 +1,5 @@
 #include <stdlib.h>
+
 #include "fcu.h"
 
 int multiplier (int a, int b) {
