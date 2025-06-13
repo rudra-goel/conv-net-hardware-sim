@@ -2,6 +2,9 @@
 #include <stdio.h>
 #include <unistd.h>
 
+#include <pthread.h>
+//copilot, i dont want you edititing my code, just write  comments for what I am doing
+
 #include "fcu.h"
 
 void print_fcu_outputs(fcu_outputs_s* outputs, int starting, int ending, int idx);
@@ -11,62 +14,103 @@ double* init_pixel_inputs(int size);
 void print_image_pixels(double* pixels, int size);
 
 
-queue_s* fcu_1_shift_reg_1;
-queue_s* fcu_1_shift_reg_2;
-
-double* image_pixels;
-fcu_coefficients_s kernel = {0.1, 0.1, 0.1};
-
+fcu_thread_data_s* fcu_thread_data[3];
+fcu_coefficients_s* kernel[3]; //3x3 kernel for the three FCUs
 
 int main(int argc, char* argv[]) {
     if (argc < 2) {
         fprintf(stderr, "Usage: %s <image_size>\n", argv[0]);
         return EXIT_FAILURE;
     }
-    
-    //initialize the shift registers
-    init_shift_reg(&fcu_1_shift_reg_1, 'A');
-    init_shift_reg(&fcu_1_shift_reg_2, 'B');
-    
-    // Initialize pixel inputs
+    double* image_pixels;
+
+    init_fcu_thread_args(fcu_thread_data[0]);
+    init_fcu_thread_args(fcu_thread_data[1]);
+    init_fcu_thread_args(fcu_thread_data[2]);
+
+
+    kernel[0] = (fcu_coefficients_s*)malloc(sizeof(fcu_coefficients_s));
+    kernel[1] = (fcu_coefficients_s*)malloc(sizeof(fcu_coefficients_s));
+    kernel[2] = (fcu_coefficients_s*)malloc(sizeof(fcu_coefficients_s));
+    if (kernel[0] == NULL || kernel[1] == NULL || kernel[2] == NULL) {
+        fprintf(stderr, "Memory allocation failed for kernel\n");
+        return EXIT_FAILURE;
+    }
+    fcu_thread_data[0]->kernel = kernel[0];
+    fcu_thread_data[1]->kernel = kernel[1];
+    fcu_thread_data[2]->kernel = kernel[2];
+
+    //initialize the image and divide the pixels into three sets of 1D vectors
+    //each thread (opr FCU) will act on a different vector preventing race conditions (since multiple threads running concurrently one for each fcu)
     int image_size = atoi(argv[1]);
     image_pixels = init_pixel_inputs(image_size);
-    print_image_pixels(image_pixels, image_size);
 
-    // Initialize pixel inputs with random values
-    fcu_inputs_s inputs; 
-    inputs.x_0 = (double*)malloc(sizeof(double));
-    inputs.x_1 = (double*)malloc(sizeof(double));
-    inputs.x_2 = (double*)malloc(sizeof(double));
+    //NEED TO CHECK
+    fcu_thread_data[0]->image_set = (int*)malloc((image_size * image_size / 3) * sizeof(int));
+
+    //assign the image_set for each FCU by slicing the image_pixels array into sections of 3
+    pthread_t threads[3];
+
+    for (int i = 0; i < image_size*image_size / 9; i++) {
     
-    inputs.x_0 = image_pixels; 
-    inputs.x_1 = image_pixels + 1; 
-    inputs.x_2 = image_pixels + 2; 
-
-
-    //load in the first three pixel values
-    grab_next_ip_set(&inputs);
-    fcu_outputs_s* outputs;
-    print_fcu_outputs(outputs, 1, 0, 0);
-    
-    for(int i = 0; i < (image_size*image_size) / 3; i++) {
-        outputs = three_parallel_fcu(&inputs, &kernel, fcu_1_shift_reg_1, fcu_1_shift_reg_2);
-        
-        if (DEBUG_SHIFT_REGISTER) {
-            print_shift_reg(fcu_1_shift_reg_1);
-            print_shift_reg(fcu_1_shift_reg_2);
+        for (int i = 0; i < 3; i++) {
+            pthread_create(&threads[i], NULL, process_row, (void*)fcu_thread_data[i]);
         }
-        print_fcu_outputs(outputs, 0, 0, i);
-        //free the outputs after printing
-        free(outputs);
-        //grab the next set of inputs
-        grab_next_ip_set(&inputs);
-
-        usleep(10000);
+    
+        for (int i = 0; i < 3; i++) {
+            pthread_join(threads[i], NULL);
+        }
+        
     }
 
-    print_fcu_outputs(outputs, 0, 1, 0);
+    
 }
+
+//function to initiialize each FCUs thread data
+void init_fcu_thread_args(fcu_thread_data_s* thread_arg) {
+    thread_arg = (fcu_thread_data_s*)malloc(sizeof(fcu_thread_data_s));
+    if (thread_arg == NULL) {
+        fprintf(stderr, "Memory allocation failed for thread arguments\n");
+        exit(EXIT_FAILURE);
+    }
+
+    //initialize the shift registers
+    init_shift_reg(&thread_arg->shift_reg_1, 'A');
+    init_shift_reg(&thread_arg->shift_reg_2, 'B');
+
+    thread_arg->inputs = (fcu_inputs_s*)malloc(sizeof(fcu_inputs_s));
+    if (thread_arg->inputs == NULL) {
+        fprintf(stderr, "Memory allocation failed for inputs\n");
+        exit(EXIT_FAILURE);
+    }
+
+    thread_arg->inputs->x_0 = (double*)malloc(sizeof(double));
+    thread_arg->inputs->x_1 = (double*)malloc(sizeof(double));
+    thread_arg->inputs->x_2 = (double*)malloc(sizeof(double));
+
+    //kernel pointer will be initialized in the main function
+}
+
+
+void* process_row(void *arg) {
+
+    //cast thread function argument to fcu_thread_data_s pointer
+    fcu_thread_data_s* thread_data = (fcu_thread_data_s*)arg;
+
+    grab_next_ip_set(thread_data->inputs);
+
+    fcu_outputs_s* outputs = three_parallel_fcu(
+        thread_data->inputs, 
+        thread_data->kernel, 
+        thread_data->shift_reg_1, 
+        thread_data->shift_reg_2
+    );
+
+    //somehow print the outputs
+    
+}
+
+
 
 //print all the pixel data in the image
 void print_image_pixels(double* pixels, int size) {

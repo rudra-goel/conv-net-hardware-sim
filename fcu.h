@@ -34,6 +34,15 @@ typedef struct {
     double* x_2;
 } fcu_inputs_s;
 
+//define struct for the thread
+typedef struct {
+    queue_s* shift_reg_1;
+    queue_s* shift_reg_2;
+    fcu_inputs_s* inputs;
+    fcu_coefficients_s* kernel;
+    int* image_set;
+} fcu_thread_data_s;
+
 //struct for the FIRs impulse response coefficients
 typedef struct {
     double h_0;
